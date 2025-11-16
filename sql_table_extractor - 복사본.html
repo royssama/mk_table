@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SQL 테이블 추출기</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px;
+            min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 28px;
+            margin-bottom: 10px;
+        }
+        
+        .header p {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+        
+        .content {
+            padding: 30px;
+        }
+        
+        .input-section {
+            margin-bottom: 30px;
+        }
+        
+        .input-section label {
+            display: block;
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: #333;
+            font-size: 16px;
+        }
+        
+        textarea {
+            width: 100%;
+            min-height: 300px;
+            padding: 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 5px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            resize: vertical;
+            transition: border-color 0.3s;
+        }
+        
+        textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        .button-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+        
+        button {
+            padding: 12px 30px;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+        
+        .btn-secondary:hover {
+            background: #5a6268;
+        }
+        
+        .result-section {
+            margin-top: 30px;
+        }
+        
+        .result-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        
+        .result-header h2 {
+            color: #333;
+            font-size: 22px;
+        }
+        
+        .stats {
+            display: flex;
+            gap: 20px;
+        }
+        
+        .stat-item {
+            background: #f8f9fa;
+            padding: 10px 20px;
+            border-radius: 5px;
+            text-align: center;
+        }
+        
+        .stat-item .number {
+            font-size: 24px;
+            font-weight: bold;
+            color: #667eea;
+        }
+        
+        .stat-item .label {
+            font-size: 12px;
+            color: #666;
+            margin-top: 5px;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            border-radius: 5px;
+            overflow: hidden;
+        }
+        
+        thead {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        
+        th {
+            padding: 15px;
+            text-align: left;
+            font-weight: bold;
+            font-size: 14px;
+        }
+        
+        td {
+            padding: 12px 15px;
+            border-bottom: 1px solid #e0e0e0;
+            font-size: 14px;
+        }
+        
+        tbody tr:hover {
+            background: #f8f9fa;
+        }
+        
+        tbody tr:last-child td {
+            border-bottom: none;
+        }
+        
+        .type-badge {
+            display: inline-block;
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+        
+        .type-select {
+            background: #667eea;
+            color: white;
+        }
+        
+        .type-insert {
+            background: #28a745;
+            color: white;
+        }
+        
+        .type-update {
+            background: #ffc107;
+            color: #333;
+        }
+        
+        .type-delete {
+            background: #dc3545;
+            color: white;
+        }
+        
+        .type-merge {
+            background: #17a2b8;
+            color: white;
+        }
+        
+        .no-results {
+            text-align: center;
+            padding: 40px;
+            color: #999;
+            font-size: 16px;
+        }
+        
+        .table-name {
+            font-family: 'Courier New', monospace;
+            font-weight: bold;
+            color: #333;
+        }
+        
+        .filter-section {
+            margin-bottom: 20px;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        
+        .filter-section select {
+            padding: 8px 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 5px;
+            font-size: 14px;
+            cursor: pointer;
+        }
+        
+        .filter-section select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔍 SQL 테이블 추출기</h1>
+            <p>프로시저 또는 쿼리문을 입력하면 타입별 테이블을 자동으로 추출합니다</p>
+        </div>
+        
+        <div class="content">
+            <div class="input-section">
+                <label for="sqlInput">SQL 프로시저 또는 쿼리문 입력:</label>
+                <textarea id="sqlInput" placeholder="CREATE PROCEDURE ... 또는 SELECT ... FROM ... 등을 입력하세요"></textarea>
+                <div class="button-group">
+                    <button class="btn-primary" onclick="extractTables()">테이블 추출</button>
+                    <button class="btn-secondary" onclick="clearAll()">전체 지우기</button>
+                </div>
+            </div>
+            
+            <div class="result-section" id="resultSection" style="display: none;">
+                <div class="result-header">
+                    <h2>추출 결과</h2>
+                    <div class="stats" id="stats"></div>
+                </div>
+                
+                <div class="filter-section">
+                    <label>타입 필터:</label>
+                    <select id="typeFilter" onchange="filterTable()">
+                        <option value="all">전체</option>
+                        <option value="select">SELECT</option>
+                        <option value="insert">INSERT</option>
+                        <option value="update">UPDATE</option>
+                        <option value="delete">DELETE</option>
+                        <option value="merge">MERGE</option>
+                    </select>
+                </div>
+                
+                <div id="tableContainer"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        var allTables = [];
+        var filteredTables = [];
+        var cteNames = [];
+
+        function extractTables() {
+            var sqlText = document.getElementById('sqlInput').value.trim();
+            
+            if (!sqlText) {
+                alert('SQL 문을 입력해주세요.');
+                return;
+            }
+            
+            allTables = [];
+            cteNames = [];
+            
+            // SQL을 대문자로 변환하여 파싱 (원본은 유지)
+            var sqlUpper = sqlText.toUpperCase();
+            
+            // CTE 이름 추출 (제외 목록)
+            extractCTENames(sqlText, sqlUpper);
+            
+            // SELECT 문에서 테이블 추출
+            extractSelectTables(sqlText, sqlUpper);
+            
+            // INSERT 문에서 테이블 추출
+            extractInsertTables(sqlText, sqlUpper);
+            
+            // UPDATE 문에서 테이블 추출
+            extractUpdateTables(sqlText, sqlUpper);
+            
+            // DELETE 문에서 테이블 추출
+            extractDeleteTables(sqlText, sqlUpper);
+            
+            // MERGE 문에서 테이블 추출
+            extractMergeTables(sqlText, sqlUpper);
+            
+            // 중복 제거
+            removeDuplicates();
+            
+            // 결과 표시
+            displayResults();
+        }
+        
+        function extractCTENames(sqlText, sqlUpper) {
+            // WITH 절에서 CTE 이름 추출
+            var withPattern = /WITH\s+([A-Za-z_][A-Za-z0-9_]*)\s+AS/gi;
+            var match;
+            
+            while ((match = withPattern.exec(sqlText)) !== null) {
+                var cteName = match[1].trim();
+                if (cteName) {
+                    cteNames.push(cteName.toUpperCase());
+                }
+            }
+            
+            // 여러 CTE가 쉼표로 구분된 경우
+            var multiCTEPattern = /,\s*([A-Za-z_][A-Za-z0-9_]*)\s+AS/gi;
+            while ((match = multiCTEPattern.exec(sqlText)) !== null) {
+                var cteName = match[1].trim();
+                if (cteName) {
+                    cteNames.push(cteName.toUpperCase());
+                }
+            }
+        }
+        
+        function extractSelectTables(sqlText, sqlUpper) {
+            // SELECT ... FROM 패턴 찾기
+            var fromPattern = /FROM\s+([#]?[A-Za-z_][A-Za-z0-9_]*)/gi;
+            var match;
+            
+            while ((match = fromPattern.exec(sqlText)) !== null) {
+                var tableName = match[1].trim();
+                if (tableName && !isKeyword(tableName) && !isCTEName(tableName)) {
+                    allTables.push({
+                        type: 'select',
+                        name: tableName
+                    });
+                }
+            }
+            
+            // JOIN 패턴 찾기 (CTE 제외)
+            var joinPattern = /(?:INNER|LEFT|RIGHT|FULL|OUTER)?\s*JOIN\s+([#]?[A-Za-z_][A-Za-z0-9_]*)/gi;
+            while ((match = joinPattern.exec(sqlText)) !== null) {
+                var tableName = match[1].trim();
+                if (tableName && !isKeyword(tableName) && !isCTEName(tableName)) {
+                    allTables.push({
+                        type: 'select',
+                        name: tableName
+                    });
+                }
+            }
+        }
+        
+        function extractInsertTables(sqlText, sqlUpper) {
+            // INSERT INTO 테이블명 패턴
+            var insertPattern = /INSERT\s+(?:INTO\s+)?([#]?[A-Za-z_][A-Za-z0-9_]*)/gi;
+            var match;
+            
+            while ((match = insertPattern.exec(sqlText)) !== null) {
+                var tableName = match[1].trim();
+                if (tableName && !isKeyword(tableName)) {
+                    allTables.push({
+                        type: 'insert',
+                        name: tableName
+                    });
+                }
+            }
+        }
+        
+        function extractUpdateTables(sqlText, sqlUpper) {
+            // UPDATE 문에서 FROM 절이 있는 경우 실제 테이블명 추출
+            // UPDATE 별칭 ... FROM 실제테이블명 패턴 찾기
+            var updateBlocks = sqlText.split(/UPDATE\s+/i);
+            
+            for (var i = 1; i < updateBlocks.length; i++) {
+                var block = updateBlocks[i];
+                // FROM 절 찾기
+                var fromMatch = /FROM\s+([#]?[A-Za-z_][A-Za-z0-9_]*)/i.exec(block);
+                if (fromMatch) {
+                    var tableName = fromMatch[1].trim();
+                    if (tableName && !isKeyword(tableName) && !isCTEName(tableName)) {
+                        allTables.push({
+                            type: 'update',
+                            name: tableName
+                        });
+                    }
+                } else {
+                    // FROM 절이 없는 경우, UPDATE 뒤의 첫 번째 단어가 실제 테이블명인지 확인
+                    var firstWordMatch = /^([#]?[A-Za-z_][A-Za-z0-9_]*)/.exec(block);
+                    if (firstWordMatch) {
+                        var tableName = firstWordMatch[1].trim();
+                        // 실제 테이블명인지 확인 (대문자로 시작하거나 #로 시작하는 경우, 그리고 짧은 별칭이 아닌 경우)
+                        if (tableName && !isKeyword(tableName) && !isCTEName(tableName) && 
+                            (tableName.charAt(0) === '#' || (tableName.length > 3 && /^[A-Z]/.test(tableName)))) {
+                            allTables.push({
+                                type: 'update',
+                                name: tableName
+                            });
+                        }
+                    }
+                }
+            }
+        }
+        
+        function extractDeleteTables(sqlText, sqlUpper) {
+            // DELETE FROM 테이블명 패턴 (OUTPUT 제외)
+            var deletePattern = /DELETE\s+(?:FROM\s+)?([#]?[A-Za-z_][A-Za-z0-9_]*)/gi;
+            var match;
+            
+            while ((match = deletePattern.exec(sqlText)) !== null) {
+                var tableName = match[1].trim();
+                // OUTPUT 키워드 제외
+                if (tableName && !isKeyword(tableName) && tableName.toUpperCase() !== 'OUTPUT' && !isCTEName(tableName)) {
+                    allTables.push({
+                        type: 'delete',
+                        name: tableName
+                    });
+                }
+            }
+        }
+        
+        function extractMergeTables(sqlText, sqlUpper) {
+            // MERGE 테이블명 패턴
+            var mergePattern = /MERGE\s+([#]?[A-Za-z_][A-Za-z0-9_]*)/gi;
+            var match;
+            
+            while ((match = mergePattern.exec(sqlText)) !== null) {
+                var tableName = match[1].trim();
+                if (tableName && !isKeyword(tableName)) {
+                    allTables.push({
+                        type: 'merge',
+                        name: tableName
+                    });
+                }
+            }
+        }
+        
+        function isKeyword(word) {
+            var keywords = ['AS', 'ON', 'WHERE', 'SET', 'VALUES', 'INTO', 'FROM', 'JOIN', 'INNER', 'LEFT', 'RIGHT', 'FULL', 'OUTER'];
+            return keywords.indexOf(word.toUpperCase()) !== -1;
+        }
+        
+        function isCTEName(word) {
+            return cteNames.indexOf(word.toUpperCase()) !== -1;
+        }
+        
+        function removeDuplicates() {
+            var seen = {};
+            var unique = [];
+            
+            for (var i = 0; i < allTables.length; i++) {
+                var key = allTables[i].type + '|' + allTables[i].name;
+                if (!seen[key]) {
+                    seen[key] = true;
+                    unique.push(allTables[i]);
+                }
+            }
+            
+            allTables = unique;
+        }
+        
+        function displayResults() {
+            if (allTables.length === 0) {
+                document.getElementById('resultSection').style.display = 'none';
+                alert('테이블을 찾을 수 없습니다.');
+                return;
+            }
+            
+            // 통계 계산
+            var stats = {
+                select: 0,
+                insert: 0,
+                update: 0,
+                delete: 0,
+                merge: 0,
+                total: allTables.length
+            };
+            
+            for (var i = 0; i < allTables.length; i++) {
+                var type = allTables[i].type;
+                if (stats[type] !== undefined) {
+                    stats[type]++;
+                }
+            }
+            
+            // 통계 표시
+            var statsHtml = '<div class="stat-item">' +
+                '<div class="number">' + stats.total + '</div>' +
+                '<div class="label">전체</div>' +
+                '</div>' +
+                '<div class="stat-item">' +
+                '<div class="number">' + stats.select + '</div>' +
+                '<div class="label">SELECT</div>' +
+                '</div>' +
+                '<div class="stat-item">' +
+                '<div class="number">' + stats.insert + '</div>' +
+                '<div class="label">INSERT</div>' +
+                '</div>' +
+                '<div class="stat-item">' +
+                '<div class="number">' + stats.update + '</div>' +
+                '<div class="label">UPDATE</div>' +
+                '</div>' +
+                '<div class="stat-item">' +
+                '<div class="number">' + stats.delete + '</div>' +
+                '<div class="label">DELETE</div>' +
+                '</div>' +
+                '<div class="stat-item">' +
+                '<div class="number">' + stats.merge + '</div>' +
+                '<div class="label">MERGE</div>' +
+                '</div>';
+            
+            document.getElementById('stats').innerHTML = statsHtml;
+            
+            // 테이블 정렬 (타입별, 이름별)
+            allTables.sort(function(a, b) {
+                if (a.type !== b.type) {
+                    var order = {select: 1, insert: 2, update: 3, delete: 4, merge: 5};
+                    return (order[a.type] || 99) - (order[b.type] || 99);
+                }
+                return a.name.localeCompare(b.name);
+            });
+            
+            filteredTables = allTables;
+            filterTable();
+            
+            document.getElementById('resultSection').style.display = 'block';
+        }
+        
+        function filterTable() {
+            var filterType = document.getElementById('typeFilter').value;
+            
+            if (filterType === 'all') {
+                filteredTables = allTables;
+            } else {
+                filteredTables = [];
+                for (var i = 0; i < allTables.length; i++) {
+                    if (allTables[i].type === filterType) {
+                        filteredTables.push(allTables[i]);
+                    }
+                }
+            }
+            
+            renderTable();
+        }
+        
+        function renderTable() {
+            var container = document.getElementById('tableContainer');
+            
+            if (filteredTables.length === 0) {
+                container.innerHTML = '<div class="no-results">선택한 타입의 테이블이 없습니다.</div>';
+                return;
+            }
+            
+            var html = '<table><thead><tr><th style="width: 80px; text-align: center;">No</th><th style="width: 150px;">Type</th><th>Table Name</th></tr></thead><tbody>';
+            
+            for (var i = 0; i < filteredTables.length; i++) {
+                var item = filteredTables[i];
+                var typeClass = 'type-' + item.type;
+                html += '<tr>' +
+                    '<td style="text-align: center; color: #666;">' + (i + 1) + '</td>' +
+                    '<td><span class="type-badge ' + typeClass + '">' + item.type.toUpperCase() + '</span></td>' +
+                    '<td><span class="table-name">' + escapeHtml(item.name) + '</span></td>' +
+                    '</tr>';
+            }
+            
+            html += '</tbody></table>';
+            container.innerHTML = html;
+        }
+        
+        function escapeHtml(text) {
+            var map = {
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#039;'
+            };
+            return text.replace(/[&<>"']/g, function(m) { return map[m]; });
+        }
+        
+        function clearAll() {
+            document.getElementById('sqlInput').value = '';
+            document.getElementById('resultSection').style.display = 'none';
+            allTables = [];
+            filteredTables = [];
+        }
+    </script>
+</body>
+</html>
+

@@ -1,0 +1,9 @@
+type   |  name
+select  |  Categories1
+select  |  Categories2
+select  |  Categories3
+select  |  OrderDetails1
+select  |  OrderDetails2
+select  |  Products1
+select  |  Products2
+

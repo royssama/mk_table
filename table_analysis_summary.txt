@@ -1,0 +1,112 @@
+================================================================================
+프로시저 테이블 사용 분석 - 타입별 정리
+================================================================================
+
+[SELECT 문에서 사용된 테이블]
+--------------------------------------------------------------------------------
+1. Departments
+2. Employees
+3. Orders
+4. OrderDetails
+5. Products
+6. Categories
+7. Suppliers
+8. Customers
+9. Shippers
+10. Regions
+11. OrderCancellations
+12. Discounts
+13. SalesPerformanceReport
+14. CustomerSegmentAnalysis
+15. DepartmentPerformanceReport
+16. #TempProcessingData
+17. #TempValidationResults
+18. #TempAggregatedData
+19. #TempMergeResults
+
+[INSERT 문에서 사용된 테이블]
+--------------------------------------------------------------------------------
+임시 테이블:
+1. #TempProcessingData
+2. #TempValidationResults
+3. #TempAggregatedData
+
+영구 테이블:
+1. SalesPerformanceReport
+2. CustomerSegmentAnalysis
+3. DepartmentPerformanceReport
+4. ProcessExecutionLog
+5. ProcessStatistics
+6. ErrorLog
+
+[UPDATE 문에서 사용된 테이블]
+--------------------------------------------------------------------------------
+1. #TempProcessingData (3회 업데이트)
+2. Orders
+
+[DELETE 문에서 사용된 테이블]
+--------------------------------------------------------------------------------
+1. OrderProcessingQueue
+2. CustomerOrderSummary (MERGE 문 내부에서 삭제)
+
+[MERGE 문에서 사용된 테이블]
+--------------------------------------------------------------------------------
+1. CustomerOrderSummary (target)
+   - SOURCE: #TempProcessingData
+   - OUTPUT: #TempMergeResults
+
+================================================================================
+전체 사용 테이블 목록 (중복 제거)
+================================================================================
+
+영구 테이블 (20개):
+1. Departments
+2. Employees
+3. Orders
+4. OrderDetails
+5. Products
+6. Categories
+7. Suppliers
+8. Customers
+9. Shippers
+10. Regions
+11. OrderCancellations
+12. Discounts
+13. CustomerOrderSummary
+14. OrderProcessingQueue
+15. SalesPerformanceReport
+16. CustomerSegmentAnalysis
+17. DepartmentPerformanceReport
+18. ProcessExecutionLog
+19. ProcessStatistics
+20. ErrorLog
+
+임시 테이블 (4개):
+1. #TempProcessingData
+2. #TempValidationResults
+3. #TempAggregatedData
+4. #TempMergeResults
+
+================================================================================
+타입별 통계
+================================================================================
+
+SELECT:  19개 테이블 (15개 영구 + 4개 임시)
+INSERT:   9개 테이블 (6개 영구 + 3개 임시)
+UPDATE:   2개 테이블 (1개 영구 + 1개 임시)
+DELETE:  2개 테이블 (2개 영구)
+MERGE:    1개 테이블 (1개 영구)
+
+================================================================================
+가장 많이 사용된 테이블 (SELECT 기준)
+================================================================================
+1. Orders          - 15회 이상
+2. OrderDetails    - 15회 이상
+3. Products        - 12회 이상
+4. Customers       - 10회 이상
+5. Categories      - 10회 이상
+6. Employees       - 8회 이상
+7. Departments     - 6회 이상
+
+================================================================================
+
