@@ -568,8 +568,8 @@
         }
         
         function extractMergeTables(sqlText, sqlUpper) {
-            // MERGE 테이블명 패턴
-            var mergePattern = /MERGE\s+([#]?[A-Za-z_][A-Za-z0-9_]*)/gi;
+            // MERGE INTO 포함 및 스키마.테이블 패턴 허용
+            var mergePattern = /MERGE\s+(?:INTO\s+)?([#]?(?:\[?[A-Za-z_][A-Za-z0-9_]*\]?\.?)+)/gi;
             var match;
             
             while ((match = mergePattern.exec(sqlText)) !== null) {
