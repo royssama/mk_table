@@ -11,7 +11,7 @@
                        FROM Categories1 c2
                        WHERE c2.CategoryName IN (
                            SELECT TOP 5 cat.CategoryName
-                           FROM Categories2 cat2, Categories3 cat3
+                           FROM aaa.Categories2 cat2, bbb.Categories3 cat3
 
                            INNER JOIN Products2 pr ON cat.CategoryId = pr.CategoryId
                            INNER JOIN OrderDetails2 od3 ON pr.ProductId = od3.ProductId
@@ -20,3 +20,41 @@
                        )
                    )
                )
+
+
+               merge into aaa.CustomerOrderSummary as target
+               using (
+                select * from bbb.CustomerOrderSummary
+               ) as source
+               on target.CustomerId = source.CustomerId
+               and target.DepartmentId = source.DepartmentId
+               when matched then
+               update set target.OrderCount = source.OrderCount,
+               target.TotalAmount = source.TotalAmount,
+               target.AvgAmount = source.AvgAmount,
+               target.LastProcessDate = source.LastProcessDate,
+               target.FirstProcessDate = source.FirstProcessDate,
+               target.ProductCount = source.ProductCount,
+
+
+
+               merge testCustomerOrderSummary_
+               using (
+                select * from test.CustomerOrderSummary
+               ) as source
+               on target.CustomerId = source.CustomerId
+               and target.DepartmentId = source.DepartmentId
+               when matched then
+               update set target.OrderCount = source.OrderCount,
+               target.TotalAmount = source.TotalAmount,
+               target.AvgAmount = source.AvgAmount,
+               target.LastProcessDate = source.LastProcessDate,
+               target.FirstProcessDate = source.FirstProcessDate,
+               target.ProductCount = source.ProductCount,
+
+
+
+               select * from (select * from test.tb01) a,
+               test.tb02 b, test.tb03 c, test.tb04 d, tb05 e,tb06 f
+               where a.id = b.id
+               
