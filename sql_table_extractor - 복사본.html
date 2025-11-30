@@ -267,15 +267,6 @@
             margin-left: 5px;
             cursor: pointer;
         }
-        
-        .file-item {
-            padding: 5px 10px;
-            margin: 5px 0;
-            background: #f8f9fa;
-            border-radius: 3px;
-            display: inline-block;
-            margin-right: 10px;
-        }
     </style>
 </head>
 <body>
@@ -287,11 +278,7 @@
         
         <div class="content">
             <div class="input-section">
-                <label for="fileInput">SQL 파일 업로드 (여러 파일 선택 가능):</label>
-                <input type="file" id="fileInput" multiple accept=".sql,.xsql,.txt" style="width: 100%; padding: 10px; margin-bottom: 15px; border: 2px solid #e0e0e0; border-radius: 5px; font-size: 14px; cursor: pointer;">
-                <div id="fileList" style="margin-bottom: 15px; font-size: 14px; color: #666;"></div>
-                
-                <label for="sqlInput" style="margin-top: 20px;">또는 SQL 프로시저 또는 쿼리문 직접 입력:</label>
+                <label for="sqlInput">SQL 프로시저 또는 쿼리문 입력:</label>
                 <textarea id="sqlInput" placeholder="CREATE PROCEDURE ... 또는 SELECT ... FROM ... 등을 입력하세요"></textarea>
                 <div class="button-group">
                     <button class="btn-primary" onclick="extractTables()">테이블 추출</button>
@@ -328,115 +315,50 @@
         var allTables = [];
         var filteredTables = [];
         var cteNames = [];
-        var uploadedFiles = [];
-
-        // 파일 선택 이벤트
-        document.addEventListener('DOMContentLoaded', function() {
-            var fileInput = document.getElementById('fileInput');
-            if (fileInput) {
-                fileInput.addEventListener('change', function(e) {
-                    uploadedFiles = Array.from(e.target.files);
-                    displayFileList();
-                });
-            }
-        });
-
-        function displayFileList() {
-            var fileListDiv = document.getElementById('fileList');
-            if (uploadedFiles.length === 0) {
-                fileListDiv.innerHTML = '';
-                return;
-            }
-            
-            var html = '<strong>선택된 파일 (' + uploadedFiles.length + '개):</strong><br>';
-            for (var i = 0; i < uploadedFiles.length; i++) {
-                html += '<span class="file-item">' + escapeHtml(uploadedFiles[i].name) + '</span>';
-            }
-            fileListDiv.innerHTML = html;
-        }
 
         function extractTables() {
-            // 파일이 선택되었는지 확인
-            var fileInput = document.getElementById('fileInput');
-            var sqlInput = document.getElementById('sqlInput');
+            var sqlText = document.getElementById('sqlInput').value.trim();
             
-            if (uploadedFiles.length === 0 && !sqlInput.value.trim()) {
-                alert('SQL 파일을 업로드하거나 SQL 문을 입력해주세요.');
+            if (!sqlText) {
+                alert('SQL 문을 입력해주세요.');
                 return;
             }
             
             allTables = [];
             cteNames = [];
             
-            // 파일이 있으면 파일부터 처리
-            if (uploadedFiles.length > 0) {
-                processFiles(0);
-            } else {
-                // 파일이 없으면 텍스트 입력 처리
-                processSQLText(sqlInput.value.trim(), '직접 입력');
-            }
-        }
-        
-        function processFiles(index) {
-            if (index >= uploadedFiles.length) {
-                // 모든 파일 처리 완료
-                removeDuplicates();
-                displayResults();
-                return;
-            }
-            
-            var file = uploadedFiles[index];
-            var fileName = file.name;
-            var reader = new FileReader();
-            
-            reader.onload = function(e) {
-                var sqlText = e.target.result;
-                processSQLText(sqlText, fileName);
-                
-                // 다음 파일 처리
-                processFiles(index + 1);
-            };
-            
-            reader.onerror = function() {
-                alert('파일 읽기 오류: ' + fileName);
-                processFiles(index + 1);
-            };
-            
-            reader.readAsText(file);
-        }
-        
-        function processSQLText(sqlText, fileName) {
-            if (!sqlText || !sqlText.trim()) {
-                return;
-            }
-            
             // SQL을 대문자로 변환하여 파싱 (원본은 유지)
             var sqlUpper = sqlText.toUpperCase();
             
-            // CTE 이름 추출 (제외 목록) - 파일별로 독립적으로 처리
-            var fileCTENames = [];
-            extractCTENames(sqlText, sqlUpper, fileCTENames);
+            // CTE 이름 추출 (제외 목록)
+            extractCTENames(sqlText, sqlUpper);
             
             // SELECT 문에서 테이블 추출
-            extractSelectTables(sqlText, sqlUpper, fileName, fileCTENames);
+            extractSelectTables(sqlText, sqlUpper);
             
             // INSERT 문에서 테이블 추출
-            extractInsertTables(sqlText, sqlUpper, fileName, fileCTENames);
+            extractInsertTables(sqlText, sqlUpper);
             
             // UPDATE 문에서 테이블 추출
-            extractUpdateTables(sqlText, sqlUpper, fileName, fileCTENames);
+            extractUpdateTables(sqlText, sqlUpper);
             
             // DELETE 문에서 테이블 추출
-            extractDeleteTables(sqlText, sqlUpper, fileName, fileCTENames);
+            extractDeleteTables(sqlText, sqlUpper);
             
             // MERGE 문에서 테이블 추출
-            extractMergeTables(sqlText, sqlUpper, fileName, fileCTENames);
+            extractMergeTables(sqlText, sqlUpper);
             
             // EXEC/EXECUTE 문에서 프로시저 추출
-            extractProcedureCalls(sqlText, sqlUpper, fileName, fileCTENames);
+            extractProcedureCalls(sqlText, sqlUpper);
+            
+            // 중복 제거
+            removeDuplicates();
+            
+            // 결과 표시
+            displayResults();
         }
         
-        function extractCTENames(sqlText, sqlUpper, cteNamesArray) {
+        function extractCTENames(sqlText, sqlUpper) {
             // WITH 절에서 CTE 이름 추출
             var withPattern = /WITH\s+([A-Za-z_][A-Za-z0-9_]*)\s+AS/gi;
             var match;
@@ -444,7 +366,7 @@
             while ((match = withPattern.exec(sqlText)) !== null) {
                 var cteName = match[1].trim();
                 if (cteName) {
-                    cteNamesArray.push(cteName.toUpperCase());
+                    cteNames.push(cteName.toUpperCase());
                 }
             }
             
@@ -453,12 +375,12 @@
             while ((match = multiCTEPattern.exec(sqlText)) !== null) {
                 var cteName = match[1].trim();
                 if (cteName) {
-                    cteNamesArray.push(cteName.toUpperCase());
+                    cteNames.push(cteName.toUpperCase());
                 }
             }
         }
         
-        function extractSelectTables(sqlText, sqlUpper, fileName, fileCTENames) {
+        function extractSelectTables(sqlText, sqlUpper) {
             // FROM 절 전체를 찾아서 처리
             var fromPattern = /FROM\s+/gi;
             var match;
@@ -547,7 +469,7 @@
                                     // 서브쿼리 내용 추출 (괄호 제외)
                                     subqueryContent = fromClause.substring(subqueryStart + 1, i);
                                     // 서브쿼리 내부의 FROM 절에서 테이블 추출
-                                    extractTablesFromSubquery(subqueryContent, fileName, fileCTENames);
+                                    extractTablesFromSubquery(subqueryContent);
                                     
                                     // 서브쿼리 끝, 별칭까지 건너뛰기
                                     var afterSubquery = fromClause.substring(i + 1).trim();
@@ -575,11 +497,10 @@
                     if (tableMatch) {
                         var fullTableRef = tableMatch[1].trim();
                         var tableName = extractTableNameFromRef(fullTableRef);
-                        if (tableName && !isKeyword(tableName) && !isCTENameInFile(tableName, fileCTENames)) {
+                        if (tableName && !isKeyword(tableName) && !isCTEName(tableName)) {
                             allTables.push({
                                 type: 'select',
-                                name: tableName,
-                                fileName: fileName
+                                name: tableName
                             });
                         }
                         // 별칭까지 건너뛰기
@@ -596,18 +517,17 @@
             while ((match = joinPattern.exec(sqlText)) !== null) {
                 var joinFullRef = match[1].trim();
                 var tableName = extractTableNameFromRef(joinFullRef);
-                if (tableName && !isKeyword(tableName) && !isCTENameInFile(tableName, fileCTENames)) {
+                if (tableName && !isKeyword(tableName) && !isCTEName(tableName)) {
                     allTables.push({
                         type: 'select',
-                        name: tableName,
-                        fileName: fileName
+                        name: tableName
                     });
                 }
             }
         }
         
         // 서브쿼리 내부의 FROM 절에서 테이블 추출하는 헬퍼 함수
-        function extractTablesFromSubquery(subqueryText, fileName, fileCTENames) {
+        function extractTablesFromSubquery(subqueryText) {
             // 서브쿼리 내부의 FROM 절 찾기
             var fromPattern = /FROM\s+((?:\[?[A-Za-z_][A-Za-z0-9_]*\]?\.)?\[?#?[A-Za-z_][A-Za-z0-9_]*\]?)/gi;
             var match;
@@ -616,11 +536,10 @@
                 var fullTableRef = match[1].trim();
                 var tableName = extractTableNameFromRef(fullTableRef);
                 
-                if (tableName && !isKeyword(tableName) && !isCTENameInFile(tableName, fileCTENames)) {
+                if (tableName && !isKeyword(tableName) && !isCTEName(tableName)) {
                     allTables.push({
                         type: 'select',
-                        name: tableName,
-                        fileName: fileName
+                        name: tableName
                     });
                 }
             }
@@ -647,7 +566,7 @@
             }
         }
         
-        function extractInsertTables(sqlText, sqlUpper, fileName, fileCTENames) {
+        function extractInsertTables(sqlText, sqlUpper) {
             // INSERT INTO 테이블명 패턴
             var insertPattern = /INSERT\s+(?:INTO\s+)?([#]?[A-Za-z_][A-Za-z0-9_]*)/gi;
             var match;
@@ -657,14 +576,13 @@
                 if (tableName && !isKeyword(tableName)) {
                     allTables.push({
                         type: 'insert',
-                        name: tableName,
-                        fileName: fileName
+                        name: tableName
                     });
                 }
             }
         }
         
-        function extractUpdateTables(sqlText, sqlUpper, fileName, fileCTENames) {
+        function extractUpdateTables(sqlText, sqlUpper) {
             // UPDATE 문을 찾아서 블록 단위로 처리
             // MERGE 문 내부의 "update set"은 제외 (WHEN MATCHED THEN UPDATE SET)
             var updateRegex = /UPDATE\s+([#]?[A-Za-z_][A-Za-z0-9_]*)\s+SET/gi;
@@ -726,18 +644,17 @@
                 if (fromMatches.length > 0) {
                     var lastFrom = fromMatches[fromMatches.length - 1];
                     var tableName = lastFrom.name;
-                    if (tableName && !isKeyword(tableName) && !isCTENameInFile(tableName, fileCTENames)) {
+                    if (tableName && !isKeyword(tableName) && !isCTEName(tableName)) {
                         allTables.push({
                             type: 'update',
-                            name: tableName,
-                            fileName: fileName
+                            name: tableName
                         });
                     }
                 }
             }
         }
         
-        function extractDeleteTables(sqlText, sqlUpper, fileName, fileCTENames) {
+        function extractDeleteTables(sqlText, sqlUpper) {
             // DELETE FROM 테이블명 패턴 (OUTPUT 제외)
             var deletePattern = /DELETE\s+(?:FROM\s+)?([#]?[A-Za-z_][A-Za-z0-9_]*)/gi;
             var match;
@@ -745,11 +662,10 @@
             while ((match = deletePattern.exec(sqlText)) !== null) {
                 var tableName = match[1].trim();
                 // OUTPUT 키워드 제외
-                if (tableName && !isKeyword(tableName) && tableName.toUpperCase() !== 'OUTPUT' && !isCTENameInFile(tableName, fileCTENames)) {
+                if (tableName && !isKeyword(tableName) && tableName.toUpperCase() !== 'OUTPUT' && !isCTEName(tableName)) {
                     allTables.push({
                         type: 'delete',
-                        name: tableName,
-                        fileName: fileName
+                        name: tableName
                     });
                 }
             }
@@ -775,18 +691,17 @@
                 // WHEN NOT MATCHED BY SOURCE ... THEN DELETE 패턴 찾기
                 var deleteInMergePattern = /WHEN\s+NOT\s+MATCHED\s+BY\s+SOURCE[\s\S]*?THEN\s+DELETE/gi;
                 if (deleteInMergePattern.test(mergeBlock)) {
-                    if (tableName && !isKeyword(tableName) && !isCTENameInFile(tableName, fileCTENames)) {
+                    if (tableName && !isKeyword(tableName) && !isCTEName(tableName)) {
                         allTables.push({
                             type: 'delete',
-                            name: tableName,
-                            fileName: fileName
+                            name: tableName
                         });
                     }
                 }
             }
         }
         
-        function extractMergeTables(sqlText, sqlUpper, fileName, fileCTENames) {
+        function extractMergeTables(sqlText, sqlUpper) {
             // MERGE 테이블명 패턴 (INTO 키워드 지원, 스키마명 포함 지원)
             // MERGE INTO schema.table 또는 MERGE schema.table 또는 MERGE table
             var mergePattern = /MERGE\s+(?:INTO\s+)?((?:\[?[A-Za-z_][A-Za-z0-9_]*\]?\.)?\[?#?[A-Za-z_][A-Za-z0-9_]*\]?)/gi;
@@ -798,11 +713,10 @@
                 // 스키마명 제거하고 테이블명만 추출
                 var tableName = extractTableNameFromRef(fullTableRef);
                 
-                if (tableName && !isKeyword(tableName) && !isCTENameInFile(tableName, fileCTENames)) {
+                if (tableName && !isKeyword(tableName) && !isCTEName(tableName)) {
                     allTables.push({
                         type: 'merge',
-                        name: tableName,
-                        fileName: fileName
+                        name: tableName
                     });
                 }
                 
@@ -836,13 +750,13 @@
                     
                     // USING 절 내부의 서브쿼리에서 테이블 추출
                     if (usingContent) {
-                        extractTablesFromSubquery(usingContent, fileName, fileCTENames);
+                        extractTablesFromSubquery(usingContent);
                     }
                 }
             }
         }
         
-        function extractProcedureCalls(sqlText, sqlUpper, fileName, fileCTENames) {
+        function extractProcedureCalls(sqlText, sqlUpper) {
             // EXEC, EXECUTE, CALL 패턴 찾기
             // EXEC ProcedureName
             // EXEC dbo.ProcedureName
@@ -864,14 +778,13 @@
                     procName = match[1].trim();
                 }
                 
-                if (procName && !isKeyword(procName) && !isCTENameInFile(procName, fileCTENames)) {
-                    var key = 'exec|' + procName.toUpperCase() + '|' + fileName;
+                if (procName && !isKeyword(procName) && !isCTEName(procName)) {
+                    var key = 'exec|' + procName.toUpperCase();
                     if (!seen[key]) {
                         seen[key] = true;
                         allTables.push({
                             type: 'exec',
-                            name: procName,
-                            fileName: fileName
+                            name: procName
                         });
                     }
                 }
@@ -889,17 +802,12 @@
             return cteNames.indexOf(word.toUpperCase()) !== -1;
         }
         
-        function isCTENameInFile(word, fileCTENames) {
-            return fileCTENames.indexOf(word.toUpperCase()) !== -1;
-        }
-        
         function removeDuplicates() {
             var seen = {};
             var unique = [];
             
             for (var i = 0; i < allTables.length; i++) {
-                // 파일명도 포함하여 중복 체크 (같은 파일에서 같은 타입+테이블은 중복 제거)
-                var key = allTables[i].type + '|' + allTables[i].name + '|' + allTables[i].fileName;
+                var key = allTables[i].type + '|' + allTables[i].name;
                 if (!seen[key]) {
                     seen[key] = true;
                     unique.push(allTables[i]);
@@ -966,18 +874,12 @@
             
             document.getElementById('stats').innerHTML = statsHtml;
             
-            // 테이블 정렬 (파일명별, 타입별, 이름별)
+            // 테이블 정렬 (타입별, 이름별)
             allTables.sort(function(a, b) {
-                // 파일명 먼저 정렬
-                if (a.fileName !== b.fileName) {
-                    return a.fileName.localeCompare(b.fileName);
-                }
-                // 타입별 정렬
                 if (a.type !== b.type) {
-                    var order = {select: 1, insert: 2, update: 3, delete: 4, merge: 5, exec: 6};
+                    var order = {select: 1, insert: 2, update: 3, delete: 4, merge: 5};
                     return (order[a.type] || 99) - (order[b.type] || 99);
                 }
-                // 이름별 정렬
                 return a.name.localeCompare(b.name);
             });
             
@@ -1014,7 +916,6 @@
             
             var html = '<table><thead><tr>' +
                 '<th style="width: 80px; text-align: center;">No</th>' +
-                '<th style="width: 200px;">File Name</th>' +
                 '<th style="width: 150px;">Type <input type="checkbox" id="checkType" style="margin-left: 5px;"></th>' +
                 '<th>Table Name <input type="checkbox" id="checkTableName" style="margin-left: 5px;"></th>' +
                 '</tr></thead><tbody>';
@@ -1029,7 +930,6 @@
                 }
                 html += '<tr>' +
                     '<td style="text-align: center; color: #666;">' + (i + 1) + '</td>' +
-                    '<td><span style="font-family: monospace; font-size: 13px;">' + escapeHtml(item.fileName || '직접 입력') + '</span></td>' +
                     '<td><span class="type-badge ' + typeClass + '">' + typeDisplay + '</span></td>' +
                     '<td><span class="table-name">' + escapeHtml(item.name) + '</span></td>' +
                     '</tr>';
@@ -1059,44 +959,23 @@
             var copyText = '';
             
             // 헤더 생성
-            var includeFileName = filteredTables.length > 0 && filteredTables[0].fileName;
-            if (includeFileName) {
-                if (typeChecked && nameChecked) {
-                    copyText = 'file name  |  type   |  name\n';
-                } else if (typeChecked) {
-                    copyText = 'file name  |  type\n';
-                } else if (nameChecked) {
-                    copyText = 'file name  |  name\n';
-                }
-            } else {
-                if (typeChecked && nameChecked) {
-                    copyText = 'type   |  name\n';
-                } else if (typeChecked) {
-                    copyText = 'type\n';
-                } else if (nameChecked) {
-                    copyText = 'name\n';
-                }
+            if (typeChecked && nameChecked) {
+                copyText = 'type   |  name\n';
+            } else if (typeChecked) {
+                copyText = 'type\n';
+            } else if (nameChecked) {
+                copyText = 'name\n';
             }
             
             // 데이터 복사
             for (var i = 0; i < filteredTables.length; i++) {
                 var item = filteredTables[i];
-                if (includeFileName) {
-                    if (typeChecked && nameChecked) {
-                        copyText += (item.fileName || '직접 입력') + '  |  ' + item.type + '  |  ' + item.name + '\n';
-                    } else if (typeChecked) {
-                        copyText += (item.fileName || '직접 입력') + '  |  ' + item.type + '\n';
-                    } else if (nameChecked) {
-                        copyText += (item.fileName || '직접 입력') + '  |  ' + item.name + '\n';
-                    }
-                } else {
-                    if (typeChecked && nameChecked) {
-                        copyText += item.type + '  |  ' + item.name + '\n';
-                    } else if (typeChecked) {
-                        copyText += item.type + '\n';
-                    } else if (nameChecked) {
-                        copyText += item.name + '\n';
-                    }
+                if (typeChecked && nameChecked) {
+                    copyText += item.type + '  |  ' + item.name + '\n';
+                } else if (typeChecked) {
+                    copyText += item.type + '\n';
+                } else if (nameChecked) {
+                    copyText += item.name + '\n';
                 }
             }
             
@@ -1131,12 +1010,9 @@
         
         function clearAll() {
             document.getElementById('sqlInput').value = '';
-            document.getElementById('fileInput').value = '';
-            document.getElementById('fileList').innerHTML = '';
             document.getElementById('resultSection').style.display = 'none';
             allTables = [];
             filteredTables = [];
-            uploadedFiles = [];
         }
     </script>
 </body>

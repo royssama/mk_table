@@ -1220,10 +1220,13 @@ BEGIN
             ) AS SupplierCount,
             (SELECT COUNT(DISTINCT r.RegionId)
              FROM Regions r
-             INNER JOIN Customers c ON r.RegionId = c.RegionId
+             INNER JOIN user01.Customers c ON r.RegionId = c.RegionId
              INNER JOIN Orders o ON c.CustomerId = o.CustomerId
              WHERE o.OrderDate >= @PreviousMonth
-            ) AS RegionCount,
+            ) AS RegionCount, (SELECT COUNT(DISTINCT r.RegionId)
+             FROM user01.Regions r,user02.tb01 t1,tb02 t2,tb02 t3,(select * from user001.sub_tb01) s_tb01,(select * from sub_tb02@user5) s_tb02
+             WHERE o.OrderDate >= @PreviousMonth
+            ) AS RegionCount2,
             DATEDIFF(SECOND, @StartTime, GETDATE()) AS ProcessingTimeSeconds,
             CASE 
                 WHEN SUM(CASE WHEN tpd.Status <> 'Processed' THEN 1 ELSE 0 END) = 0
