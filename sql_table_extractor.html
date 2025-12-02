@@ -646,6 +646,48 @@
             return result;
         }
 
+        function extractBalancedParenthesesContent(text, startIndex) {
+            if (!text || startIndex < 0 || startIndex >= text.length || text[startIndex] !== '(') {
+                return null;
+            }
+            var depth = 0;
+            var inSingle = false;
+            var inDouble = false;
+            for (var i = startIndex; i < text.length; i++) {
+                var ch = text[i];
+                var nextChar = i + 1 < text.length ? text[i + 1] : '';
+                if (!inDouble && ch === "'") {
+                    if (inSingle && nextChar === "'") {
+                        i++;
+                        continue;
+                    }
+                    inSingle = !inSingle;
+                    continue;
+                }
+                if (!inSingle && ch === '"') {
+                    inDouble = !inDouble;
+                    continue;
+                }
+                if (inSingle || inDouble) {
+                    continue;
+                }
+                if (ch === '(') {
+                    depth++;
+                    continue;
+                }
+                if (ch === ')') {
+                    depth--;
+                    if (depth === 0) {
+                        return {
+                            content: text.substring(startIndex + 1, i),
+                            endIndex: i
+                        };
+                    }
+                }
+            }
+            return null;
+        }
+
         function findClauseBoundaryIndex(textUpper) {
             if (!textUpper) return -1;
             var boundaryRegex = /\b(WHERE|GROUP|ORDER|HAVING|UNION|INTERSECT|EXCEPT|LIMIT|OFFSET|INNER\s+JOIN|LEFT\s+JOIN|RIGHT\s+JOIN|FULL\s+JOIN|CROSS\s+JOIN|JOIN|SELECT|WITH|INSERT|UPDATE|DELETE|MERGE|EXEC|EXECUTE|CALL)\b/;
@@ -711,22 +753,7 @@
                     }
                 }
                 
-                // 서브쿼리 내부의 FROM 절 처리 (SELECT로 시작하는 괄호)
-                var subqueryPattern = /\(\s*SELECT\s+[^)]*FROM\s+((?:\[?[A-Za-z_][A-Za-z0-9_]*\]?\.)?\[?#?[A-Za-z_][A-Za-z0-9_]*\]?)/gi;
-                var subqueryMatch;
-                while ((subqueryMatch = subqueryPattern.exec(fromClause)) !== null) {
-                    var subqueryTableRef = subqueryMatch[1].trim();
-                    if (subqueryTableRef) {
-                        var subqueryTableName = extractTableNameFromRef(subqueryTableRef);
-                        if (subqueryTableName && !isKeyword(subqueryTableName) && !isCTENameInFile(subqueryTableName, fileCTENames)) {
-                            allTables.push({
-                                type: 'select',
-                                name: subqueryTableName,
-                                fileName: fileName
-                            });
-                        }
-                    }
-                }
+                processSubqueriesInFromClause(fromClause, fileName, fileCTENames);
             }
             
             // JOIN 패턴 찾기 (CTE 제외, 스키마명 포함 지원) - 최적화: 모든 매치를 먼저 수집
@@ -782,6 +809,29 @@
                             fileName: fileName
                         });
                     }
+                }
+            }
+        }
+        
+        function processSubqueriesInFromClause(fromClause, fileName, fileCTENames) {
+            if (!fromClause) return;
+            var pattern = /\(\s*SELECT/gi;
+            var match;
+            while ((match = pattern.exec(fromClause)) !== null) {
+                var openIndex = match.index;
+                // ensure the character at openIndex is '('
+                while (openIndex < fromClause.length && fromClause[openIndex] !== '(') {
+                    openIndex++;
+                }
+                if (openIndex >= fromClause.length) {
+                    break;
+                }
+                var result = extractBalancedParenthesesContent(fromClause, openIndex);
+                if (result && result.content) {
+                    extractTablesFromSubquery(result.content, fileName, fileCTENames);
+                    pattern.lastIndex = openIndex + result.content.length + 2;
+                } else {
+                    break;
                 }
             }
         }
