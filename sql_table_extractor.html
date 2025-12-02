@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SQL 테이블 추출기 v03</title>
+    <title>SQL 테이블 추출기 v09</title>
     <style>
         * {
             margin: 0;
@@ -350,6 +350,7 @@
         var filteredTables = [];
         var cteNames = [];
         var uploadedFiles = [];
+        var MAX_FROM_CLAUSE_LENGTH = 4000;
 
         // 파일 선택 이벤트
         document.addEventListener('DOMContentLoaded', function() {
@@ -406,6 +407,17 @@
             }
         }
         
+        function preprocessSQLText(sqlText) {
+            if (!sqlText) return '';
+            var text = sqlText;
+            text = text.replace(/<!\[CDATA\s*\[/gi, '');
+            text = text.replace(/\]\]>/g, '');
+            text = text.replace(/<!--[\s\S]*?-->/g, ' ');
+            text = text.replace(/\/\*[\s\S]*?\*\//g, ' ');
+            text = text.replace(/--[^\n\r]*/g, '');
+            return text;
+        }
+        
         function showProgress(message) {
             var resultSection = document.getElementById('resultSection');
             resultSection.style.display = 'block';
@@ -436,14 +448,16 @@
             var chunkSize = 50000;
             var currentPos = 0;
             var fileCTENames = [];
-            var sqlUpper = sqlText.toUpperCase();
+            var cleanedText = preprocessSQLText(sqlText);
+            var sqlUpper = cleanedText.toUpperCase();
+            var totalLength = cleanedText.length;
             
             // 먼저 CTE 이름 전체 추출
-            extractCTENames(sqlText, sqlUpper, fileCTENames);
+            extractCTENames(cleanedText, sqlUpper, fileCTENames);
             
             function processChunk() {
-                var endPos = Math.min(currentPos + chunkSize, sqlText.length);
-                var chunk = sqlText.substring(currentPos, endPos);
+                var endPos = Math.min(currentPos + chunkSize, cleanedText.length);
+                var chunk = cleanedText.substring(currentPos, endPos);
                 var chunkUpper = chunk.toUpperCase();
                 
                 // 청크 처리
@@ -457,13 +471,13 @@
                 currentPos = endPos;
                 
                 // 진행 상태 업데이트
-                var progress = Math.min(100, Math.round((currentPos / sqlText.length) * 100));
+                var progress = totalLength === 0 ? 100 : Math.min(100, Math.round((currentPos / totalLength) * 100));
                 var progressFill = document.querySelector('.progress-fill');
                 if (progressFill) {
                     progressFill.style.width = progress + '%';
                 }
                 
-                if (currentPos < sqlText.length) {
+                if (currentPos < cleanedText.length) {
                     // 다음 청크 처리 (비동기)
                     setTimeout(processChunk, 10);
                 } else {
@@ -528,30 +542,36 @@
                 return;
             }
             
+            var cleanedText = preprocessSQLText(sqlText);
+            if (!cleanedText.trim()) {
+                return;
+            }
+            
             // SQL을 대문자로 변환하여 파싱 (원본은 유지)
-            var sqlUpper = sqlText.toUpperCase();
+            var sqlUpper = cleanedText.toUpperCase();
             
             // CTE 이름 추출 (제외 목록) - 파일별로 독립적으로 처리
             var fileCTENames = [];
-            extractCTENames(sqlText, sqlUpper, fileCTENames);
+            extractCTENames(cleanedText, sqlUpper, fileCTENames);
             
             // SELECT 문에서 테이블 추출
-            extractSelectTables(sqlText, sqlUpper, fileName, fileCTENames);
+            extractSelectTables(cleanedText, sqlUpper, fileName, fileCTENames);
+            extractExpressionSubqueryTables(cleanedText, fileName, fileCTENames);
             
             // INSERT 문에서 테이블 추출
-            extractInsertTables(sqlText, sqlUpper, fileName, fileCTENames);
+            extractInsertTables(cleanedText, sqlUpper, fileName, fileCTENames);
             
             // UPDATE 문에서 테이블 추출
-            extractUpdateTables(sqlText, sqlUpper, fileName, fileCTENames);
+            extractUpdateTables(cleanedText, sqlUpper, fileName, fileCTENames);
             
             // DELETE 문에서 테이블 추출
-            extractDeleteTables(sqlText, sqlUpper, fileName, fileCTENames);
+            extractDeleteTables(cleanedText, sqlUpper, fileName, fileCTENames);
             
             // MERGE 문에서 테이블 추출
-            extractMergeTables(sqlText, sqlUpper, fileName, fileCTENames);
+            extractMergeTables(cleanedText, sqlUpper, fileName, fileCTENames);
             
             // EXEC/EXECUTE 문에서 프로시저 추출
-            extractProcedureCalls(sqlText, sqlUpper, fileName, fileCTENames);
+            extractProcedureCalls(cleanedText, sqlUpper, fileName, fileCTENames);
         }
         
         function extractCTENames(sqlText, sqlUpper, cteNamesArray) {
@@ -575,6 +595,125 @@
                 }
             }
         }
+
+        function stripNestedParenthesesContent(text) {
+            if (!text) return '';
+            var result = '';
+            var depth = 0;
+            var inSingle = false;
+            var inDouble = false;
+            for (var i = 0; i < text.length; i++) {
+                var ch = text[i];
+                var nextChar = i + 1 < text.length ? text[i + 1] : '';
+                if (!inDouble && ch === "'") {
+                    if (inSingle && nextChar === "'") {
+                        // Escaped single quote inside string
+                        result += depth === 0 ? ch : ' ';
+                        i++;
+                        result += depth === 0 ? text[i] : ' ';
+                        continue;
+                    }
+                    inSingle = !inSingle;
+                    result += depth === 0 ? ch : ' ';
+                    continue;
+                }
+                if (!inSingle && ch === '"') {
+                    inDouble = !inDouble;
+                    result += depth === 0 ? ch : ' ';
+                    continue;
+                }
+                if (inSingle || inDouble) {
+                    result += depth === 0 ? ch : ' ';
+                    continue;
+                }
+                if (ch === '(') {
+                    depth++;
+                    result += ' ';
+                    continue;
+                }
+                if (ch === ')') {
+                    if (depth > 0) {
+                        depth--;
+                    }
+                    result += ' ';
+                    continue;
+                }
+                if (depth === 0) {
+                    result += ch;
+                } else {
+                    result += ' ';
+                }
+            }
+            return result;
+        }
+        
+        function unwrapOuterParentheses(text) {
+            if (!text) return '';
+            var trimmed = text.trim();
+            while (trimmed.startsWith('(')) {
+                var result = extractBalancedParenthesesContent(trimmed, 0);
+                if (result && result.endIndex === trimmed.length - 1) {
+                    trimmed = result.content.trim();
+                } else {
+                    break;
+                }
+            }
+            return trimmed;
+        }
+
+        function extractBalancedParenthesesContent(text, startIndex) {
+            if (!text || startIndex < 0 || startIndex >= text.length || text[startIndex] !== '(') {
+                return null;
+            }
+            var depth = 0;
+            var inSingle = false;
+            var inDouble = false;
+            for (var i = startIndex; i < text.length; i++) {
+                var ch = text[i];
+                var nextChar = i + 1 < text.length ? text[i + 1] : '';
+                if (!inDouble && ch === "'") {
+                    if (inSingle && nextChar === "'") {
+                        i++;
+                        continue;
+                    }
+                    inSingle = !inSingle;
+                    continue;
+                }
+                if (!inSingle && ch === '"') {
+                    inDouble = !inDouble;
+                    continue;
+                }
+                if (inSingle || inDouble) {
+                    continue;
+                }
+                if (ch === '(') {
+                    depth++;
+                    continue;
+                }
+                if (ch === ')') {
+                    depth--;
+                    if (depth === 0) {
+                        return {
+                            content: text.substring(startIndex + 1, i),
+                            endIndex: i
+                        };
+                    }
+                }
+            }
+            return null;
+        }
+
+        function findClauseBoundaryIndex(textUpper) {
+            if (!textUpper) return -1;
+            var boundaryRegex = /\b(WHERE|GROUP|ORDER|HAVING|UNION|INTERSECT|EXCEPT|LIMIT|OFFSET|INNER\s+JOIN|LEFT\s+JOIN|RIGHT\s+JOIN|FULL\s+JOIN|CROSS\s+JOIN|JOIN|SELECT|WITH|INSERT|UPDATE|DELETE|MERGE|EXEC|EXECUTE|CALL)\b/;
+            var boundaryMatch = boundaryRegex.exec(textUpper);
+            var boundaryIndex = boundaryMatch ? boundaryMatch.index : -1;
+            var semicolonIndex = textUpper.indexOf(';');
+            if (semicolonIndex !== -1 && (boundaryIndex === -1 || semicolonIndex < boundaryIndex)) {
+                boundaryIndex = semicolonIndex;
+            }
+            return boundaryIndex;
+        }
         
         function extractSelectTables(sqlText, sqlUpper, fileName, fileCTENames) {
             // FROM 절 전체를 찾아서 처리
@@ -590,39 +729,23 @@
             // 각 FROM 절 처리
             for (var i = 0; i < matches.length; i++) {
                 var fromStart = matches[i] + 4; // "FROM" 길이
-                
-                // FROM 절의 끝을 찾기 (최적화: 정규식으로 한 번에 찾기)
-                var remaining = sqlText.substring(fromStart);
-                var endMatch = remaining.match(/\s+(WHERE|GROUP|ORDER|INNER\s+JOIN|LEFT\s+JOIN|RIGHT\s+JOIN|FULL\s+JOIN|UNION|;|\s+ON\s+)/i);
-                var fromEnd;
-                
-                if (endMatch) {
-                    // ON은 MERGE 문의 조인 조건일 수 있으므로 확인
-                    if (endMatch[0].toUpperCase().indexOf(' ON ') !== -1) {
-                        // ON 앞에 THEN이 있는지 확인 (MERGE 문 내부)
-                        var beforeOn = sqlText.substring(Math.max(0, fromStart + endMatch.index - 50), fromStart + endMatch.index).toUpperCase();
-                        if (beforeOn.indexOf('THEN') === -1) {
-                            fromEnd = fromStart + endMatch.index;
-                        } else {
-                            // MERGE 문 내부의 ON이면 다음 키워드 찾기
-                            var nextMatch = remaining.substring(endMatch.index + endMatch[0].length).match(/\s+(WHERE|GROUP|ORDER|UNION|;)/i);
-                            fromEnd = nextMatch ? fromStart + endMatch.index + endMatch[0].length + nextMatch.index : fromStart + Math.min(1000, remaining.length);
-                        }
-                    } else {
-                        fromEnd = fromStart + endMatch.index;
-                    }
-                } else {
-                    fromEnd = fromStart + Math.min(1000, remaining.length);
-                }
-                
+                var sliceEnd = Math.min(sqlText.length, fromStart + MAX_FROM_CLAUSE_LENGTH);
+                var clauseSlice = sqlText.substring(fromStart, sliceEnd);
+                var clauseSliceUpper = sqlUpper.substring(fromStart, sliceEnd);
+                var strippedSliceUpper = stripNestedParenthesesContent(clauseSliceUpper);
+                var boundaryIndex = findClauseBoundaryIndex(strippedSliceUpper);
+                var fromEnd = boundaryIndex !== -1 ? fromStart + boundaryIndex : sliceEnd;
                 var fromClause = sqlText.substring(fromStart, fromEnd);
+                if (!fromClause.trim()) {
+                    continue;
+                }
+                var clauseForPattern = stripNestedParenthesesContent(fromClause);
                 
-                // FROM 절에서 테이블 추출 (최적화: 정규식으로 한 번에 찾기)
-                // 테이블명 패턴: schema.table alias 또는 table alias
-                var tablePattern = /(?:^|\s|,)\s*((?:\[?[A-Za-z_][A-Za-z0-9_]*\]?\.)?\[?#?[A-Za-z_][A-Za-z0-9_]*\]?)\s+([A-Za-z_][A-Za-z0-9_]*)/gi;
+                // FROM 절에서 테이블 추출 (alias 여부와 관계없이 대응)
+                var tablePattern = /(?:^|\s|,)\s*((?:\[?[A-Za-z_][A-Za-z0-9_]*\]?\.)?\[?#?[A-Za-z_][A-Za-z0-9_]*\]?)(?:\s+(?:AS\s+)?[A-Za-z_][A-Za-z0-9_]*)?/gi;
                 var tableMatch;
                 
-                while ((tableMatch = tablePattern.exec(fromClause)) !== null) {
+                while ((tableMatch = tablePattern.exec(clauseForPattern)) !== null) {
                     var fullTableRef = tableMatch[1].trim();
                     if (!fullTableRef) continue;
                     
@@ -644,22 +767,7 @@
                     }
                 }
                 
-                // 서브쿼리 내부의 FROM 절 처리 (SELECT로 시작하는 괄호)
-                var subqueryPattern = /\(\s*SELECT\s+[^)]*FROM\s+((?:\[?[A-Za-z_][A-Za-z0-9_]*\]?\.)?\[?#?[A-Za-z_][A-Za-z0-9_]*\]?)/gi;
-                var subqueryMatch;
-                while ((subqueryMatch = subqueryPattern.exec(fromClause)) !== null) {
-                    var subqueryTableRef = subqueryMatch[1].trim();
-                    if (subqueryTableRef) {
-                        var subqueryTableName = extractTableNameFromRef(subqueryTableRef);
-                        if (subqueryTableName && !isKeyword(subqueryTableName) && !isCTENameInFile(subqueryTableName, fileCTENames)) {
-                            allTables.push({
-                                type: 'select',
-                                name: subqueryTableName,
-                                fileName: fileName
-                            });
-                        }
-                    }
-                }
+                processSubqueriesInFromClause(fromClause, fileName, fileCTENames);
             }
             
             // JOIN 패턴 찾기 (CTE 제외, 스키마명 포함 지원) - 최적화: 모든 매치를 먼저 수집
@@ -715,6 +823,63 @@
                             fileName: fileName
                         });
                     }
+                }
+            }
+        }
+        
+        function extractExpressionSubqueryTables(sqlText, fileName, fileCTENames) {
+            if (!sqlText) return;
+            var patterns = [
+                /\b(?:NOT\s+)?IN\s*\(/gi,
+                /\bEXISTS\s*\(/gi
+            ];
+            
+            for (var p = 0; p < patterns.length; p++) {
+                var regex = patterns[p];
+                var match;
+                while ((match = regex.exec(sqlText)) !== null) {
+                    var openIndex = match.index;
+                    while (openIndex < sqlText.length && sqlText[openIndex] !== '(') {
+                        openIndex++;
+                    }
+                    if (openIndex >= sqlText.length) {
+                        break;
+                    }
+                    
+                    var result = extractBalancedParenthesesContent(sqlText, openIndex);
+                    if (!result || !result.content) {
+                        break;
+                    }
+                    
+                    var subqueryContent = unwrapOuterParentheses(result.content);
+                    if (/^\s*SELECT\b/i.test(subqueryContent)) {
+                        extractTablesFromSubquery(subqueryContent, fileName, fileCTENames);
+                    }
+                    
+                    regex.lastIndex = result.endIndex + 1;
+                }
+            }
+        }
+        
+        function processSubqueriesInFromClause(fromClause, fileName, fileCTENames) {
+            if (!fromClause) return;
+            var pattern = /\(\s*SELECT/gi;
+            var match;
+            while ((match = pattern.exec(fromClause)) !== null) {
+                var openIndex = match.index;
+                // ensure the character at openIndex is '('
+                while (openIndex < fromClause.length && fromClause[openIndex] !== '(') {
+                    openIndex++;
+                }
+                if (openIndex >= fromClause.length) {
+                    break;
+                }
+                var result = extractBalancedParenthesesContent(fromClause, openIndex);
+                if (result && result.content) {
+                    extractTablesFromSubquery(result.content, fileName, fileCTENames);
+                    pattern.lastIndex = openIndex + result.content.length + 2;
+                } else {
+                    break;
                 }
             }
         }
@@ -974,7 +1139,8 @@
         function isKeyword(word) {
             var keywords = ['AS', 'ON', 'WHERE', 'SET', 'VALUES', 'INTO', 'FROM', 'JOIN', 'INNER', 'LEFT', 'RIGHT', 'FULL', 'OUTER', 
                             'UPDATE', 'DELETE', 'INSERT', 'SELECT', 'MERGE', 'WHEN', 'THEN', 'MATCHED', 'USING', 'TARGET', 'SOURCE',
-                            'AND', 'OR', 'NOT', 'IN', 'EXISTS', 'IS', 'NULL', 'BY', 'GROUP', 'ORDER', 'HAVING', 'UNION', 'ALL'];
+                            'AND', 'OR', 'NOT', 'IN', 'EXISTS', 'IS', 'NULL', 'BY', 'GROUP', 'ORDER', 'HAVING', 'UNION', 'ALL',
+                            'CASE', 'ELSE', 'END', 'DUAL'];
             return keywords.indexOf(word.toUpperCase()) !== -1;
         }
         
