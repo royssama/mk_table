@@ -741,9 +741,8 @@
                 }
                 var clauseForPattern = stripNestedParenthesesContent(fromClause);
                 
-                // FROM 절에서 테이블 추출 (최적화: 정규식으로 한 번에 찾기)
-                // 테이블명 패턴: schema.table alias 또는 table alias
-                var tablePattern = /(?:^|\s|,)\s*((?:\[?[A-Za-z_][A-Za-z0-9_]*\]?\.)?\[?#?[A-Za-z_][A-Za-z0-9_]*\]?)\s+([A-Za-z_][A-Za-z0-9_]*)/gi;
+                // FROM 절에서 테이블 추출 (alias 여부와 관계없이 대응)
+                var tablePattern = /(?:^|\s|,)\s*((?:\[?[A-Za-z_][A-Za-z0-9_]*\]?\.)?\[?#?[A-Za-z_][A-Za-z0-9_]*\]?)(?:\s+(?:AS\s+)?[A-Za-z_][A-Za-z0-9_]*)?/gi;
                 var tableMatch;
                 
                 while ((tableMatch = tablePattern.exec(clauseForPattern)) !== null) {
