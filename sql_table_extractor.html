@@ -350,6 +350,7 @@
         var filteredTables = [];
         var cteNames = [];
         var uploadedFiles = [];
+        var MAX_FROM_CLAUSE_LENGTH = 4000;
 
         // 파일 선택 이벤트
         document.addEventListener('DOMContentLoaded', function() {
@@ -575,6 +576,69 @@
                 }
             }
         }
+
+        function stripNestedParenthesesContent(text) {
+            if (!text) return '';
+            var result = '';
+            var depth = 0;
+            var inSingle = false;
+            var inDouble = false;
+            for (var i = 0; i < text.length; i++) {
+                var ch = text[i];
+                var nextChar = i + 1 < text.length ? text[i + 1] : '';
+                if (!inDouble && ch === "'") {
+                    if (inSingle && nextChar === "'") {
+                        // Escaped single quote inside string
+                        result += depth === 0 ? ch : ' ';
+                        i++;
+                        result += depth === 0 ? text[i] : ' ';
+                        continue;
+                    }
+                    inSingle = !inSingle;
+                    result += depth === 0 ? ch : ' ';
+                    continue;
+                }
+                if (!inSingle && ch === '"') {
+                    inDouble = !inDouble;
+                    result += depth === 0 ? ch : ' ';
+                    continue;
+                }
+                if (inSingle || inDouble) {
+                    result += depth === 0 ? ch : ' ';
+                    continue;
+                }
+                if (ch === '(') {
+                    depth++;
+                    result += ' ';
+                    continue;
+                }
+                if (ch === ')') {
+                    if (depth > 0) {
+                        depth--;
+                    }
+                    result += ' ';
+                    continue;
+                }
+                if (depth === 0) {
+                    result += ch;
+                } else {
+                    result += ' ';
+                }
+            }
+            return result;
+        }
+
+        function findClauseBoundaryIndex(textUpper) {
+            if (!textUpper) return -1;
+            var boundaryRegex = /\b(WHERE|GROUP|ORDER|HAVING|UNION|INTERSECT|EXCEPT|LIMIT|OFFSET|INNER\s+JOIN|LEFT\s+JOIN|RIGHT\s+JOIN|FULL\s+JOIN|CROSS\s+JOIN|JOIN)\b/;
+            var boundaryMatch = boundaryRegex.exec(textUpper);
+            var boundaryIndex = boundaryMatch ? boundaryMatch.index : -1;
+            var semicolonIndex = textUpper.indexOf(';');
+            if (semicolonIndex !== -1 && (boundaryIndex === -1 || semicolonIndex < boundaryIndex)) {
+                boundaryIndex = semicolonIndex;
+            }
+            return boundaryIndex;
+        }
         
         function extractSelectTables(sqlText, sqlUpper, fileName, fileCTENames) {
             // FROM 절 전체를 찾아서 처리
@@ -590,39 +654,24 @@
             // 각 FROM 절 처리
             for (var i = 0; i < matches.length; i++) {
                 var fromStart = matches[i] + 4; // "FROM" 길이
-                
-                // FROM 절의 끝을 찾기 (최적화: 정규식으로 한 번에 찾기)
-                var remaining = sqlText.substring(fromStart);
-                var endMatch = remaining.match(/\s+(WHERE|GROUP|ORDER|INNER\s+JOIN|LEFT\s+JOIN|RIGHT\s+JOIN|FULL\s+JOIN|UNION|;|\s+ON\s+)/i);
-                var fromEnd;
-                
-                if (endMatch) {
-                    // ON은 MERGE 문의 조인 조건일 수 있으므로 확인
-                    if (endMatch[0].toUpperCase().indexOf(' ON ') !== -1) {
-                        // ON 앞에 THEN이 있는지 확인 (MERGE 문 내부)
-                        var beforeOn = sqlText.substring(Math.max(0, fromStart + endMatch.index - 50), fromStart + endMatch.index).toUpperCase();
-                        if (beforeOn.indexOf('THEN') === -1) {
-                            fromEnd = fromStart + endMatch.index;
-                        } else {
-                            // MERGE 문 내부의 ON이면 다음 키워드 찾기
-                            var nextMatch = remaining.substring(endMatch.index + endMatch[0].length).match(/\s+(WHERE|GROUP|ORDER|UNION|;)/i);
-                            fromEnd = nextMatch ? fromStart + endMatch.index + endMatch[0].length + nextMatch.index : fromStart + Math.min(1000, remaining.length);
-                        }
-                    } else {
-                        fromEnd = fromStart + endMatch.index;
-                    }
-                } else {
-                    fromEnd = fromStart + Math.min(1000, remaining.length);
-                }
-                
+                var sliceEnd = Math.min(sqlText.length, fromStart + MAX_FROM_CLAUSE_LENGTH);
+                var clauseSlice = sqlText.substring(fromStart, sliceEnd);
+                var clauseSliceUpper = sqlUpper.substring(fromStart, sliceEnd);
+                var strippedSliceUpper = stripNestedParenthesesContent(clauseSliceUpper);
+                var boundaryIndex = findClauseBoundaryIndex(strippedSliceUpper);
+                var fromEnd = boundaryIndex !== -1 ? fromStart + boundaryIndex : sliceEnd;
                 var fromClause = sqlText.substring(fromStart, fromEnd);
+                if (!fromClause.trim()) {
+                    continue;
+                }
+                var clauseForPattern = stripNestedParenthesesContent(fromClause);
                 
                 // FROM 절에서 테이블 추출 (최적화: 정규식으로 한 번에 찾기)
                 // 테이블명 패턴: schema.table alias 또는 table alias
                 var tablePattern = /(?:^|\s|,)\s*((?:\[?[A-Za-z_][A-Za-z0-9_]*\]?\.)?\[?#?[A-Za-z_][A-Za-z0-9_]*\]?)\s+([A-Za-z_][A-Za-z0-9_]*)/gi;
                 var tableMatch;
                 
-                while ((tableMatch = tablePattern.exec(fromClause)) !== null) {
+                while ((tableMatch = tablePattern.exec(clauseForPattern)) !== null) {
                     var fullTableRef = tableMatch[1].trim();
                     if (!fullTableRef) continue;
                     
@@ -974,7 +1023,8 @@
         function isKeyword(word) {
             var keywords = ['AS', 'ON', 'WHERE', 'SET', 'VALUES', 'INTO', 'FROM', 'JOIN', 'INNER', 'LEFT', 'RIGHT', 'FULL', 'OUTER', 
                             'UPDATE', 'DELETE', 'INSERT', 'SELECT', 'MERGE', 'WHEN', 'THEN', 'MATCHED', 'USING', 'TARGET', 'SOURCE',
-                            'AND', 'OR', 'NOT', 'IN', 'EXISTS', 'IS', 'NULL', 'BY', 'GROUP', 'ORDER', 'HAVING', 'UNION', 'ALL'];
+                            'AND', 'OR', 'NOT', 'IN', 'EXISTS', 'IS', 'NULL', 'BY', 'GROUP', 'ORDER', 'HAVING', 'UNION', 'ALL',
+                            'CASE', 'ELSE', 'END'];
             return keywords.indexOf(word.toUpperCase()) !== -1;
         }
         
