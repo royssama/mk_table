@@ -556,6 +556,7 @@
             
             // SELECT 문에서 테이블 추출
             extractSelectTables(cleanedText, sqlUpper, fileName, fileCTENames);
+            extractExpressionSubqueryTables(cleanedText, fileName, fileCTENames);
             
             // INSERT 문에서 테이블 추출
             extractInsertTables(cleanedText, sqlUpper, fileName, fileCTENames);
@@ -644,6 +645,20 @@
                 }
             }
             return result;
+        }
+        
+        function unwrapOuterParentheses(text) {
+            if (!text) return '';
+            var trimmed = text.trim();
+            while (trimmed.startsWith('(')) {
+                var result = extractBalancedParenthesesContent(trimmed, 0);
+                if (result && result.endIndex === trimmed.length - 1) {
+                    trimmed = result.content.trim();
+                } else {
+                    break;
+                }
+            }
+            return trimmed;
         }
 
         function extractBalancedParenthesesContent(text, startIndex) {
@@ -809,6 +824,40 @@
                             fileName: fileName
                         });
                     }
+                }
+            }
+        }
+        
+        function extractExpressionSubqueryTables(sqlText, fileName, fileCTENames) {
+            if (!sqlText) return;
+            var patterns = [
+                /\b(?:NOT\s+)?IN\s*\(/gi,
+                /\bEXISTS\s*\(/gi
+            ];
+            
+            for (var p = 0; p < patterns.length; p++) {
+                var regex = patterns[p];
+                var match;
+                while ((match = regex.exec(sqlText)) !== null) {
+                    var openIndex = match.index;
+                    while (openIndex < sqlText.length && sqlText[openIndex] !== '(') {
+                        openIndex++;
+                    }
+                    if (openIndex >= sqlText.length) {
+                        break;
+                    }
+                    
+                    var result = extractBalancedParenthesesContent(sqlText, openIndex);
+                    if (!result || !result.content) {
+                        break;
+                    }
+                    
+                    var subqueryContent = unwrapOuterParentheses(result.content);
+                    if (/^\s*SELECT\b/i.test(subqueryContent)) {
+                        extractTablesFromSubquery(subqueryContent, fileName, fileCTENames);
+                    }
+                    
+                    regex.lastIndex = result.endIndex + 1;
                 }
             }
         }
