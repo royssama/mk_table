@@ -407,6 +407,17 @@
             }
         }
         
+        function preprocessSQLText(sqlText) {
+            if (!sqlText) return '';
+            var text = sqlText;
+            text = text.replace(/<!\[CDATA\s*\[/gi, '');
+            text = text.replace(/\]\]>/g, '');
+            text = text.replace(/<!--[\s\S]*?-->/g, ' ');
+            text = text.replace(/\/\*[\s\S]*?\*\//g, ' ');
+            text = text.replace(/--[^\n\r]*/g, '');
+            return text;
+        }
+        
         function showProgress(message) {
             var resultSection = document.getElementById('resultSection');
             resultSection.style.display = 'block';
@@ -437,14 +448,16 @@
             var chunkSize = 50000;
             var currentPos = 0;
             var fileCTENames = [];
-            var sqlUpper = sqlText.toUpperCase();
+            var cleanedText = preprocessSQLText(sqlText);
+            var sqlUpper = cleanedText.toUpperCase();
+            var totalLength = cleanedText.length;
             
             // 먼저 CTE 이름 전체 추출
-            extractCTENames(sqlText, sqlUpper, fileCTENames);
+            extractCTENames(cleanedText, sqlUpper, fileCTENames);
             
             function processChunk() {
-                var endPos = Math.min(currentPos + chunkSize, sqlText.length);
-                var chunk = sqlText.substring(currentPos, endPos);
+                var endPos = Math.min(currentPos + chunkSize, cleanedText.length);
+                var chunk = cleanedText.substring(currentPos, endPos);
                 var chunkUpper = chunk.toUpperCase();
                 
                 // 청크 처리
@@ -458,13 +471,13 @@
                 currentPos = endPos;
                 
                 // 진행 상태 업데이트
-                var progress = Math.min(100, Math.round((currentPos / sqlText.length) * 100));
+                var progress = totalLength === 0 ? 100 : Math.min(100, Math.round((currentPos / totalLength) * 100));
                 var progressFill = document.querySelector('.progress-fill');
                 if (progressFill) {
                     progressFill.style.width = progress + '%';
                 }
                 
-                if (currentPos < sqlText.length) {
+                if (currentPos < cleanedText.length) {
                     // 다음 청크 처리 (비동기)
                     setTimeout(processChunk, 10);
                 } else {
@@ -529,30 +542,35 @@
                 return;
             }
             
+            var cleanedText = preprocessSQLText(sqlText);
+            if (!cleanedText.trim()) {
+                return;
+            }
+            
             // SQL을 대문자로 변환하여 파싱 (원본은 유지)
-            var sqlUpper = sqlText.toUpperCase();
+            var sqlUpper = cleanedText.toUpperCase();
             
             // CTE 이름 추출 (제외 목록) - 파일별로 독립적으로 처리
             var fileCTENames = [];
-            extractCTENames(sqlText, sqlUpper, fileCTENames);
+            extractCTENames(cleanedText, sqlUpper, fileCTENames);
             
             // SELECT 문에서 테이블 추출
-            extractSelectTables(sqlText, sqlUpper, fileName, fileCTENames);
+            extractSelectTables(cleanedText, sqlUpper, fileName, fileCTENames);
             
             // INSERT 문에서 테이블 추출
-            extractInsertTables(sqlText, sqlUpper, fileName, fileCTENames);
+            extractInsertTables(cleanedText, sqlUpper, fileName, fileCTENames);
             
             // UPDATE 문에서 테이블 추출
-            extractUpdateTables(sqlText, sqlUpper, fileName, fileCTENames);
+            extractUpdateTables(cleanedText, sqlUpper, fileName, fileCTENames);
             
             // DELETE 문에서 테이블 추출
-            extractDeleteTables(sqlText, sqlUpper, fileName, fileCTENames);
+            extractDeleteTables(cleanedText, sqlUpper, fileName, fileCTENames);
             
             // MERGE 문에서 테이블 추출
-            extractMergeTables(sqlText, sqlUpper, fileName, fileCTENames);
+            extractMergeTables(cleanedText, sqlUpper, fileName, fileCTENames);
             
             // EXEC/EXECUTE 문에서 프로시저 추출
-            extractProcedureCalls(sqlText, sqlUpper, fileName, fileCTENames);
+            extractProcedureCalls(cleanedText, sqlUpper, fileName, fileCTENames);
         }
         
         function extractCTENames(sqlText, sqlUpper, cteNamesArray) {
@@ -630,7 +648,7 @@
 
         function findClauseBoundaryIndex(textUpper) {
             if (!textUpper) return -1;
-            var boundaryRegex = /\b(WHERE|GROUP|ORDER|HAVING|UNION|INTERSECT|EXCEPT|LIMIT|OFFSET|INNER\s+JOIN|LEFT\s+JOIN|RIGHT\s+JOIN|FULL\s+JOIN|CROSS\s+JOIN|JOIN)\b/;
+            var boundaryRegex = /\b(WHERE|GROUP|ORDER|HAVING|UNION|INTERSECT|EXCEPT|LIMIT|OFFSET|INNER\s+JOIN|LEFT\s+JOIN|RIGHT\s+JOIN|FULL\s+JOIN|CROSS\s+JOIN|JOIN|SELECT|WITH|INSERT|UPDATE|DELETE|MERGE|EXEC|EXECUTE|CALL)\b/;
             var boundaryMatch = boundaryRegex.exec(textUpper);
             var boundaryIndex = boundaryMatch ? boundaryMatch.index : -1;
             var semicolonIndex = textUpper.indexOf(';');
